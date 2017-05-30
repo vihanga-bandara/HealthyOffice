@@ -15,7 +15,32 @@ const moment = require('moment'); //module from which can get currentdatetime
 const debug = false; //if mail is not sent
 const admin = require("firebase-admin"); //module needed to connect to firebase
 const serviceAccount = require("./firebase/serviceKey.json"); //serviceaccount key
-const Spinner = require('cli-spinner').Spinner; //spinner object not implemented
+const Spinner = require('cli-spinner').Spinner; //spinner object
+var winston = require('winston');
+var spinner;
+//setting up log file using library winston logger
+
+
+
+ function stopSpin()      {
+        spinner.stop();  
+    }
+    function startSpin()     {
+        spinner = new Spinner('processing.. %s');
+        spinner.setSpinnerString("|/-\\");
+        spinner.start();
+    }
+ 
+winston.add(
+  winston.transports.File, {
+    filename: 'Healthyoffice.log',
+    level: 'info',
+    json: true,
+    eol: '\r\n', // for Windows, or `eol: ‘n’,` for *NIX OSs
+    timestamp: true
+  }
+)
+ 
 
 
 
@@ -36,7 +61,7 @@ var transporter = nodemailer.createTransport({ //creates transporter object and 
     }
 });
 
-const app = express();	//initalize express framework and make it available using this 'app' variable
+const app = express();  //initalize express framework and make it available using this 'app' variable
 const router = express.Router(); //make routing available using this variable
 app.use("/", router); //mounts the middleware..havent specified and to use the router
 app.use(bodyParser.json());       // to support JSON-encoded bodies // parses to JSON
@@ -51,12 +76,15 @@ router.use(function (req, res, next) { //it uses the express routing ability to 
 
 // Start server
 app.listen(PORT, function () {
-    console.log('Server listening on port ' + PORT + '\n');
+    
+startSpin();
+    winston.log('info','Server listening on port ' + PORT + '\n');
+
 });
 
 // Server frontend in this where we include external CSS JS
 app.use("/", express.static(__dirname + '/public'));
-console.log('\x1b[36m%s\x1b[0m',"Static Path Set to " + __dirname + '/public');
+winston.log('info','\x1b[36m%s\x1b[0m',"Static Path Set to " + __dirname + '/public');
 
 /**
  * Business Logic
@@ -67,8 +95,7 @@ var firstTime=false;
 var isSeated=false;
 var startTime=0;
 var endTime=moment();
-var count=0;
-var count1=0; //not needed jst for dummy data
+
 
 
 client.on('connect', function () {
@@ -83,52 +110,35 @@ client.on('message', function(topic, message) {
 
 
 function businessLogic(message) {
+   stopSpin();
     var distance1 = message.distance1;
-    var distance2 = message.distance2;
-    if(count<15 || count1>14){
-
-    count++;
-    distance2=distance2+count;
-    distance1=distance1+count;
-    } else if(count1<15){
-
-    count1++;
-     distance2=distance2+15-count1;
-    distance1=distance1+15-count1;
-	}
-    
+    var distance2 = message.distance2; 
     // var clientTime = message.timestamp;
-    var clientTime = moment();	
+    var clientTime = moment();  
 
     //runs only at the beginning of the server
     if(!firstTime){
-    	console.log("No person has been detected at seat")
+        console.log("info","No person has been detected at seat");
     }
 
     if ((distance1 > threshold) && (distance2 > threshold) && (!isSeated) && (firstTime)) {
-        console.log("User has taken a break");
+        winston.log("info","User has taken a break");
         endTime=moment(); //since user has taken a break
         startTime = clientTime;
         isSeated=true;
     } else if((distance1 < threshold) && (distance2 < threshold) && (!isSeated) && (!firstTime)){
-        console.log("User has been detected");
+        winston.log("info","User has been detected");
         firstTime=true;
         endTime=clientTime; //check for difference in first instance of user sitting down
 
     } else if((distance1 < threshold) && (distance2 < threshold) && (isSeated)){
-        console.log("User has returned to seat");
-
+         winston.log("info","User has returned to seat");
         endTime=clientTime; //check for difference every other time after first instance
-
         getDuration();
-        
-        // sendDatabase("Lakindu/NeedBreak/",distance1,distance2,clientTime);
         isSeated=false;
 
     }
-    	
- 
-    
+       
     getMail(); //function call to send mail to the user
 
     processBreaks(distance1, distance2); //function call
@@ -141,7 +151,8 @@ function getDuration(){
     var difference = moment.utc(moment(endTime,"DD/MM/YYYY HH:mm:ss").diff(moment(startTime,"DD/MM/YYYY HH:mm:ss"))).format("HH:mm:ss");   
     var minutes=difference.slice(3,5);
     var seconds=difference.slice(6,8);
-    console.log("User has stayed away for --> " + minutes + " minutes and "+ seconds +" seconds");
+     winston.log("info","User has stayed away for --> " + minutes + " minutes and "+ seconds +" seconds");
+    startSpin();
     sendDatabase("IpBBEfCob0c1GaYkvAzog9rVdKn1/",difference);
 }
 
@@ -151,10 +162,12 @@ timeCheck = moment();
 var difference = moment.utc(moment(timeCheck,"DD/MM/YYYY HH:mm:ss").diff(moment(endTime,"DD/MM/YYYY HH:mm:ss"))).format("ss");
 
 if(difference==10 && (!isSeated)){
-	sendEmail("Watch Out!","You need to take a break");
-	console.log("Email has been sent to user");
-	var time = endTime.format("HH:mm:ss");
-	console.log("Need a Break!!"+" Time since last break : " + time);
+   startSpin();
+    console.log("Sending Email...");
+    sendEmail("Watch Out!","You need to take a break");
+    winston.log("info","Email has been sent to user");
+    var time = endTime.format("HH:mm:ss");
+    winston.log("info","Need a Break!!"+" Time since last break : " + time);
 }
 
 }
@@ -173,10 +186,12 @@ function getTime(){
 function sendDatabase(dbName, payload1) {
 
   if(db.ref(dbName).push(payload1)){ //unique key and difference value
-  console.log("Sending to firebase successfull");
+  winston.log('info', 'Sending to firebase successfull')
 } else {
-	console.log("Error sending to firebase");
+    
+     winston.log('error', 'Sending not successfull');
 }
+stopSpin();
    //var ref = db.ref(dbName);
    // ref.update({difference:payload1});
 }
@@ -192,9 +207,12 @@ function sendEmail(subject,message) {
     if (!debug){
         transporter.sendMail(mailOptions, function(error,info) {
             if (error) {
+                winston.log("error","Error sending email successfully")
                 return console.log(error);
             }
-            console.log('Message %s sent: %s', info.messageId, info.response);
+            winston.log('info','Message %s sent: %s', info.messageId, info.response);
+            
         });
     }
+   stopSpin();
 }
