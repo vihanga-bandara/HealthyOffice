@@ -61,7 +61,6 @@ console.log('\x1b[36m%s\x1b[0m',"Static Path Set to " + __dirname + '/public');
 /**
  * Business Logic
  */
-const breakThreshold = 1;
 var clientMessageCount = 0;
 var timeCheck;
 var firstTime=false;
@@ -101,26 +100,23 @@ function businessLogic(message) {
     // var clientTime = message.timestamp;
     var clientTime = moment();	
 
+    //runs only at the beginning of the server
     if(!firstTime){
     	console.log("No person has been detected at seat")
     }
 
-    console.log(distance1+" "+distance2);
     if ((distance1 > threshold) && (distance2 > threshold) && (!isSeated) && (firstTime)) {
-        console.log("Took a break");
+        console.log("User has taken a break");
         endTime=moment(); //since user has taken a break
-        // sendDatabase("Lakindu/TookBreak/",distance1,distance2,clientTime);
-        // timeCheck = getTime();
         startTime = clientTime;
         isSeated=true;
-        console.log(isSeated);
     } else if((distance1 < threshold) && (distance2 < threshold) && (!isSeated) && (!firstTime)){
-        console.log("Person has been detected");
+        console.log("User has been detected");
         firstTime=true;
         endTime=clientTime; //check for difference in first instance of user sitting down
 
     } else if((distance1 < threshold) && (distance2 < threshold) && (isSeated)){
-        console.log("Person has returned to seat");
+        console.log("User has returned to seat");
 
         endTime=clientTime; //check for difference every other time after first instance
 
@@ -128,33 +124,37 @@ function businessLogic(message) {
         
         // sendDatabase("Lakindu/NeedBreak/",distance1,distance2,clientTime);
         isSeated=false;
-        console.log(isSeated);
 
     }
     	
  
     
-    getMail();
+    getMail(); //function call to send mail to the user
 
-    //processBreaks(distance1, distance2);
+    processBreaks(distance1, distance2); //function call
 }
+
 //get time differences 
 function getDuration(){
 
-    //var difference = end.subtract(start);
-    var difference = moment.utc(moment(endTime,"DD/MM/YYYY HH:mm:ss").diff(moment(startTime,"DD/MM/YYYY HH:mm:ss"))).format("HH:mm:ss");
+   
+    var difference = moment.utc(moment(endTime,"DD/MM/YYYY HH:mm:ss").diff(moment(startTime,"DD/MM/YYYY HH:mm:ss"))).format("HH:mm:ss");   
+    var minutes=difference.slice(3,5);
+    var seconds=difference.slice(6,8);
+    console.log("User has stayed away for --> " + minutes + " minutes and "+ seconds +" seconds");
     sendDatabase("IpBBEfCob0c1GaYkvAzog9rVdKn1/",difference);
-    console.log("Found difference. Sending to database" + difference);
 }
 
 function getMail(){
+
 timeCheck = moment();
- var difference = moment.utc(moment(timeCheck,"DD/MM/YYYY HH:mm:ss").diff(moment(endTime,"DD/MM/YYYY HH:mm:ss"))).format("ss");
+var difference = moment.utc(moment(timeCheck,"DD/MM/YYYY HH:mm:ss").diff(moment(endTime,"DD/MM/YYYY HH:mm:ss"))).format("ss");
 
 if(difference==10 && (!isSeated)){
 	sendEmail("Watch Out!","You need to take a break");
 	console.log("Email has been sent to user");
-	console.log("Need a Break!!"+" Time since last break :" + endTime)
+	var time = endTime.format("HH:mm:ss");
+	console.log("Need a Break!!"+" Time since last break : " + time);
 }
 
 }
@@ -162,26 +162,23 @@ if(difference==10 && (!isSeated)){
 
 //shows numbers of client messages received
 function processBreaks(distance1, distance2){
-    console.log("Client Messages: " + clientMessageCount);
-    if (timeCheck == null || (distance1 > threshold && distance2 > threshold)) {
-        //program started or guy just took a break
-        timeCheck = getTime();
-    } else if (moment(getTime()).diff(timeCheck, 'minutes') >= breakThreshold) {
-        console.log("Need a break!" + " Time since last break: " + moment(getTime()).diff(timeCheck, 'minutes'));
-        sendEmail("Watch Out!","You need to take a break");
-    }
+    console.log("Client Messages : " + clientMessageCount + " --> Distance 1 : "+ distance1 +" Distance 2 : "+ distance2);
 }
 
 function getTime(){
     return moment().format();
 }
+
 //send database the time difference to be used in mobile application
 function sendDatabase(dbName, payload1) {
-    var timeNow = getTime();
-    console.log(timeNow);
-    //var ref = db.ref(dbName);
+
+  if(db.ref(dbName).push(payload1)){ //unique key and difference value
+  console.log("Sending to firebase successfull");
+} else {
+	console.log("Error sending to firebase");
+}
+   //var ref = db.ref(dbName);
    // ref.update({difference:payload1});
-  db.ref(dbName).push(payload1)
 }
 
 function sendEmail(subject,message) {
